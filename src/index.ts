@@ -1,30 +1,12 @@
 import Fastify from 'fastify';
 import websocket from '@fastify/websocket';
 import dotenv from 'dotenv';
-import { initializeDatabase } from './config/database';
+import { initializeDatabase, AppDataSource } from './config/database';
 import { redisConnection } from './config/redis';
 import { orderRoutes } from './routes/orderRoutes';
 import { orderWorker } from './services/queue/OrderWorker';
 import { closeQueue } from './config/queue';
 import { wsManager } from './services/websocket/WebSocketManager';
-
-const start = async () => {
-  try {
-    console.log('\nStarting Order Execution Engine...\n');
-
-    // Initialize database
-    console.log('Initializing database...');
-    await initializeDatabase();
-
-    // ADD THIS BLOCK: Run migrations automatically
-    console.log('Running database migrations...');
-    await AppDataSource.runMigrations();
-    console.log('Migrations completed successfully.');
-
-    // Check Redis connection
-    console.log('Checking Redis connection...');
-    await redisConnection.ping();
-    console.log('Redis connection verified\n');
 
 dotenv.config();
 
@@ -44,8 +26,8 @@ fastify.register(orderRoutes);
 
 // Health check endpoint
 fastify.get('/health', async (request, reply) => {
-  return { 
-    status: 'ok', 
+  return {
+    status: 'ok',
     timestamp: new Date().toISOString(),
     services: {
       database: 'connected',
@@ -78,6 +60,11 @@ const start = async () => {
     // Initialize database
     console.log('Initializing database...');
     await initializeDatabase();
+
+    // Run migrations automatically
+    console.log('Running database migrations...');
+    await AppDataSource.runMigrations();
+    console.log('Migrations completed successfully.');
     
     // Check Redis connection
     console.log('Checking Redis connection...');
