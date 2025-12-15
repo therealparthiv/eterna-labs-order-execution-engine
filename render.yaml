@@ -28,15 +28,17 @@ services:
           name: order-engine-redis
           property: connectionString
 
+  # Redis Instance (Moved from 'databases' to 'services')
+  - type: redis
+    name: order-engine-redis
+    region: oregon
+    plan: free
+    maxmemoryPolicy: noeviction
+    ipAllowList: [] # secure default: only allow internal connections
+
 databases:
   # PostgreSQL Database
   - name: order-engine-db
     databaseName: order_engine
     plan: free
     region: oregon
-
-  # Redis Instance
-  - name: order-engine-redis
-    plan: free
-    region: oregon
-    maxmemoryPolicy: noeviction
