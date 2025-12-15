@@ -3,30 +3,37 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const isProduction = process.env.NODE_ENV === 'production';
+// Support both individual env vars and DATABASE_URL
+const getDatabaseConfig = () => {
+  if (process.env.DATABASE_URL) {
+    // Parse DATABASE_URL for production (Render, Heroku, etc.)
+    return {
+      type: 'postgres' as const,
+      url: process.env.DATABASE_URL,
+      ssl: {
+        rejectUnauthorized: false,
+      },
+    };
+  }
+
+  // Use individual env vars for local development
+  return {
+    type: 'postgres' as const,
+    host: process.env.DB_HOST || 'localhost',
+    port: parseInt(process.env.DB_PORT || '5432'),
+    username: process.env.DB_USER || 'postgres',
+    password: process.env.DB_PASSWORD || 'postgres',
+    database: process.env.DB_NAME || 'order_engine',
+  };
+};
 
 export const AppDataSource = new DataSource({
-  type: 'postgres',
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432'),
-  username: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'postgres',
-  database: process.env.DB_NAME || 'order_engine',
-  
-  // Auto-create tables for this assignment (disable in real prod)
-  synchronize: true, 
-  logging: !isProduction,
-
-  //  Load .js files from 'dist' in production, .ts from 'src' in dev
-  entities: [isProduction ? 'dist/models/**/*.js' : 'src/models/**/*.ts'],
-  migrations: [isProduction ? 'dist/migrations/**/*.js' : 'src/migrations/**/*.ts'],
-  
+  ...getDatabaseConfig(),
+  synchronize: false, // We'll use migrations instead
+  logging: process.env.NODE_ENV === 'development',
+  entities: [__dirname + '/../models/**/*.{js,ts}'],
+  migrations: [__dirname + '/../migrations/**/*.{js,ts}'],
   subscribers: [],
-  
-  // SSL for Render
-  ssl: process.env.DB_SSL === 'true' ? {
-    rejectUnauthorized: false
-  } : false,
 });
 
 export const initializeDatabase = async (): Promise<void> => {
