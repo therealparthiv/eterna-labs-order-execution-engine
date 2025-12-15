@@ -51,8 +51,7 @@ https://order-execution-engine-b99h.onrender.com
 ```
 **Youtube Link**
 
-<iframe width="560" height="315" src="https://youtu.be/vogXQUsaKE8" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
-
+[![Demo Video](https://img.youtube.com/vi/vogXQUsaKE8/0.jpg)](https://www.youtube.com/watch?v=vogXQUsaKE8)
 The application is deployed on **Render** using a microservices-style setup:
 
 1. **Web Service** – Node.js + Fastify API
