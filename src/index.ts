@@ -8,6 +8,24 @@ import { orderWorker } from './services/queue/OrderWorker';
 import { closeQueue } from './config/queue';
 import { wsManager } from './services/websocket/WebSocketManager';
 
+const start = async () => {
+  try {
+    console.log('\nStarting Order Execution Engine...\n');
+
+    // Initialize database
+    console.log('Initializing database...');
+    await initializeDatabase();
+
+    // ADD THIS BLOCK: Run migrations automatically
+    console.log('Running database migrations...');
+    await AppDataSource.runMigrations();
+    console.log('Migrations completed successfully.');
+
+    // Check Redis connection
+    console.log('Checking Redis connection...');
+    await redisConnection.ping();
+    console.log('Redis connection verified\n');
+
 dotenv.config();
 
 const PORT = parseInt(process.env.PORT || '3000');
