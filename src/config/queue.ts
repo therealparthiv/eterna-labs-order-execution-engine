@@ -1,4 +1,4 @@
-import { Queue, Worker, QueueEvents } from 'bullmq';
+import { Queue, QueueEvents } from 'bullmq';
 import { redisConnection } from './redis';
 
 /**

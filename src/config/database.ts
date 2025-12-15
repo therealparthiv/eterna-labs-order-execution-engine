@@ -10,11 +10,15 @@ export const AppDataSource = new DataSource({
   username: process.env.DB_USER || 'postgres',
   password: process.env.DB_PASSWORD || 'postgres',
   database: process.env.DB_NAME || 'order_engine',
-  synchronize: false, // using migrations 
+  synchronize: true, 
   logging: process.env.NODE_ENV === 'development',
   entities: ['src/models/**/*.ts'],
   migrations: ['src/migrations/**/*.ts'],
   subscribers: [],
+  // FOR RENDER POSTGRES
+  ssl: process.env.DB_SSL === 'true' ? {
+    rejectUnauthorized: false // Required for Render's self-signed certs
+  } : false,
 });
 
 export const initializeDatabase = async (): Promise<void> => {
