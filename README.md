@@ -204,28 +204,49 @@ curl https://order-execution-engine-b99h.onrender.com/api/orders/fab488a4-c1f3-4
 ## Architecture
 
 ```
-Client
-  │
-  │ WebSocket
-  ▼
-Fastify Server
-  │
-  │ Order Routes
-  │  - POST /api/orders/execute
-  │  - GET  /api/orders
-  │  - GET  /api/stats
-  ▼
-Order Service
-  │
-  ├── Redis / BullMQ Queue
-  ├── PostgreSQL Storage
-  ▼
-Order Worker (10 concurrent executions)
-  │
-  ▼
-DEX Router
-  ├── Mock Raydium
-  └── Mock Meteora
+┌─────────────┐
+│   Client    │
+└──────┬──────┘
+       │ WebSocket
+       ▼
+┌─────────────────────────────────────┐
+│         Fastify Server              │
+│  ┌────────────────────────────┐     │
+│  │   Order Routes             │     │
+│  │  - POST /api/orders/execute│     │
+│  │  - GET  /api/orders        │     │
+│  │  - GET  /api/stats         │     │
+│  └─────────────┬──────────────┘     │
+└────────────────┼────────────────────┘
+                 │
+                 ▼
+       ┌─────────────────┐
+       │  Order Service  │
+       └────────┬────────┘
+                │
+    ┌───────────┼───────────┐
+    ▼           ▼           ▼
+┌────────┐ ┌────────┐ ┌──────────┐
+│ BullMQ │ │ Redis  │ │PostgreSQL│
+│ Queue  │ │ Cache  │ │ Storage  │
+└───┬────┘ └────────┘ └──────────┘
+    │
+    ▼
+┌─────────────────┐
+│  Order Worker   │
+│  (Processes     │
+│   10 orders     │
+│   concurrently) │
+└────────┬────────┘
+         │
+         ▼
+┌──────────────────┐      ┌──────────────────┐
+│  DEX Router      │─────▶│  Mock Raydium    │
+│  (Price Compare) │      └──────────────────┘
+│                  │
+│                  │─────▶┌──────────────────┐
+└──────────────────┘      │  Mock Meteora    │
+                          └──────────────────┘
 ```
 
 ### Order Lifecycle
