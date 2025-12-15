@@ -3,6 +3,8 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+const isProduction = process.env.NODE_ENV === 'production';
+
 export const AppDataSource = new DataSource({
   type: 'postgres',
   host: process.env.DB_HOST || 'localhost',
@@ -10,14 +12,20 @@ export const AppDataSource = new DataSource({
   username: process.env.DB_USER || 'postgres',
   password: process.env.DB_PASSWORD || 'postgres',
   database: process.env.DB_NAME || 'order_engine',
+  
+  // Auto-create tables for this assignment (disable in real prod)
   synchronize: true, 
-  logging: process.env.NODE_ENV === 'development',
-  entities: ['src/models/**/*.ts'],
-  migrations: ['src/migrations/**/*.ts'],
+  logging: !isProduction,
+
+  //  Load .js files from 'dist' in production, .ts from 'src' in dev
+  entities: [isProduction ? 'dist/models/**/*.js' : 'src/models/**/*.ts'],
+  migrations: [isProduction ? 'dist/migrations/**/*.js' : 'src/migrations/**/*.ts'],
+  
   subscribers: [],
-  // FOR RENDER POSTGRES
+  
+  // SSL for Render
   ssl: process.env.DB_SSL === 'true' ? {
-    rejectUnauthorized: false // Required for Render's self-signed certs
+    rejectUnauthorized: false
   } : false,
 });
 
