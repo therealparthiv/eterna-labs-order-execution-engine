@@ -5,7 +5,7 @@ import { orderQueue, getQueueMetrics } from '../config/queue';
 import { wsManager } from '../services/websocket/WebSocketManager';
 import { OrderType } from '../types/order.types';
 
-// Request validation schema
+// Schema for creating orders (used in both POST and WS)
 const createOrderSchema = z.object({
   tokenIn: z.string().min(1, 'tokenIn is required'),
   tokenOut: z.string().min(1, 'tokenOut is required'),
@@ -14,137 +14,147 @@ const createOrderSchema = z.object({
   slippage: z.number().min(0).max(100).default(1.0),
 });
 
-/**
- * Register order-related routes
- */
+// Schema for WebSocket query params (Made optional now)
+const wsQuerySchema = z.object({
+  orderId: z.string().uuid().optional(),
+});
+
 export async function orderRoutes(fastify: FastifyInstance) {
   const orderService = new OrderService();
 
   /**
-   * GET /api/orders/execute (WebSocket endpoint)
-   * Accepts WebSocket connection and processes order data sent via WebSocket
+   * POST /api/orders/execute
+   * Requirement: HTTP POST to create order
+   */
+  fastify.post('/api/orders/execute', async (request, reply) => {
+    try {
+      const validatedData = createOrderSchema.parse(request.body);
+      const orderId = await orderService.createOrder(validatedData);
+
+      await orderQueue.add('execute-order', { orderId }, {
+        jobId: orderId,
+        removeOnComplete: true,
+        removeOnFail: false,
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 1000 },
+      });
+
+      return reply.status(201).send({
+        success: true,
+        orderId,
+        message: 'Order queued',
+        wsUrl: `/api/orders/execute?orderId=${orderId}`
+      });
+    } catch (error: any) {
+      return reply.status(400).send({ success: false, error: error.message });
+    }
+  });
+
+  /**
+   * WebSocket Endpoint: /api/orders/execute
    */
   fastify.get(
     '/api/orders/execute',
     { websocket: true },
-    (socket: any, request: FastifyRequest) => {
-      console.log('New WebSocket connection established');
+    async (socket: any, request: FastifyRequest) => {
+      try {
+        const query = request.query as any;
+        
+        // Check if orderId is in URL 
+        if (query && query.orderId) {
+            console.log(`[WS] Client connected to stream Order: ${query.orderId}`);
+            
+            // Register immediately
+            wsManager.registerConnection(query.orderId, { socket });
 
-      // Listen for messages from client
-      socket.on('message', async (message: Buffer) => {
-        try {
-          // Parse order data from WebSocket message
-          const data = JSON.parse(message.toString());
-          console.log('Received order data:', data);
-
-          // Validate order data
-          const validatedData = createOrderSchema.parse(data);
-
-          // Create order
-          const orderId = await orderService.createOrder(validatedData);
-
-          // Register this WebSocket connection for this specific order
-          // Wrap socket in connection object format expected by wsManager
-          wsManager.registerConnection(orderId, { socket });
-
-          // Add order to processing queue
-          await orderQueue.add(
-            'execute-order',
-            { orderId },
-            {
-              jobId: orderId,
-              removeOnComplete: true,
-              removeOnFail: false,
+            // Send current status if available
+            const currentOrder = await orderService.getOrder(query.orderId);
+            if (currentOrder) {
+                socket.send(JSON.stringify({
+                    type: 'ORDER_UPDATE',
+                    status: currentOrder.status,
+                    data: currentOrder
+                }));
             }
-          );
+        } 
+        // No orderId 
+        else {
+            console.log('[WS] Client connected without ID. Waiting for order data...');
+            
+            socket.on('message', async (message: Buffer) => {
+                try {
+                    const data = JSON.parse(message.toString());
+                    console.log('[WS] Received creation payload:', data);
 
-          console.log(`Order ${orderId} added to queue`);
-        } catch (error: any) {
-          console.error('Error processing order:', error);
+                    // Validate
+                    const validatedData = createOrderSchema.parse(data);
+                    
+                    //  Create
+                    const orderId = await orderService.createOrder(validatedData);
 
-          // Send error message back to client
-          try {
-            socket.send(
-              JSON.stringify({
-                error: error.message || 'Failed to process order',
-                timestamp: new Date(),
-              })
-            );
-          } catch (wsError) {
-            console.error('Failed to send error via WebSocket:', wsError);
-          }
+                    // Register WS
+                    wsManager.registerConnection(orderId, { socket });
 
-          // Close connection on error
-          socket.close();
+                    // Queue
+                    await orderQueue.add('execute-order', { orderId }, {
+                        jobId: orderId,
+                        removeOnComplete: true,
+                        removeOnFail: false
+                    });
+
+                    //  Confirm to client
+                    socket.send(JSON.stringify({ 
+                        type: 'ORDER_CREATED', 
+                        orderId, 
+                        status: 'pending' 
+                    }));
+
+                } catch (error: any) {
+                    console.error('[WS] Creation error:', error);
+                    socket.send(JSON.stringify({ 
+                        error: error.message || 'Invalid format' 
+                    }));
+                }
+            });
         }
-      });
 
-      // Handle connection close
-      socket.on('close', () => {
-        console.log('WebSocket connection closed');
-      });
+        // Common Cleanup
+        socket.on('close', () => {
+        });
 
-      // Handle errors
-      socket.on('error', (error: any) => {
+      } catch (error: any) {
         console.error('WebSocket error:', error);
-      });
+        socket.close();
+      }
     }
   );
 
-  /**
-   * GET /api/orders/:orderId
-   * Get order details by ID
-   */
+
+
   fastify.get<{ Params: { orderId: string } }>(
     '/api/orders/:orderId',
     async (request, reply) => {
       const { orderId } = request.params;
-
       const order = await orderService.getOrder(orderId);
-
-      if (!order) {
-        return reply.status(404).send({
-          error: 'Order not found',
-          orderId,
-        });
-      }
-
-      return reply.send({
-        success: true,
-        order,
-      });
+      if (!order) return reply.status(404).send({ error: 'Order not found' });
+      return reply.send({ success: true, order });
     }
   );
 
-  /**
-   * GET /api/orders
-   * Get all orders with pagination
-   */
   fastify.get<{ Querystring: { limit?: number; offset?: number } }>(
     '/api/orders',
     async (request, reply) => {
       const { limit = 50, offset = 0 } = request.query;
-
       const orders = await orderService.getAllOrders(Number(limit), Number(offset));
-
-      return reply.send({
-        success: true,
-        count: orders.length,
-        orders,
-      });
+      return reply.send({ success: true, count: orders.length, orders });
     }
   );
 
-  /**
-   * GET /api/stats
-   * Get order and queue statistics
-   */
   fastify.get('/api/stats', async (request, reply) => {
     const [orderStats, queueMetrics] = await Promise.all([
       orderService.getStatistics(),
       getQueueMetrics(),
     ]);
-
     return reply.send({
       success: true,
       orders: orderStats,

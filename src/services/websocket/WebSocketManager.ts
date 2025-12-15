@@ -49,6 +49,17 @@ export class WebSocketManager {
   }
 
   /**
+   * REQUIRED FIX: Removes a connection from the map
+   * Added to satisfy the 'removeConnection' call in orderRoutes.ts
+   */
+  removeConnection(orderId: string): void {
+    if (this.connections.has(orderId)) {
+      this.connections.delete(orderId);
+      // Console log optional, keeping it silent to match your style if preferred
+    }
+  }
+
+  /**
    * Send status update to a specific order's WebSocket
    */
   sendUpdate(orderId: string, update: OrderStatusUpdate): void {
@@ -67,6 +78,19 @@ export class WebSocketManager {
       console.error(`Error sending WebSocket update for ${orderId}:`, error);
       this.connections.delete(orderId);
     }
+  }
+
+  /**
+   * COMPATIBILITY FIX: Alias for sendUpdate
+   * Allows the Queue Worker to call notifyOrderUpdate without breaking your existing naming
+   */
+  notifyOrderUpdate(orderId: string, status: string, data?: any): void {
+    this.sendUpdate(orderId, {
+        orderId,
+        status: status as any, // Type casting to fit your OrderStatusUpdate type
+        timestamp: new Date(),
+        ...data
+    });
   }
 
   /**

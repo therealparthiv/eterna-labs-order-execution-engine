@@ -1,0 +1,139 @@
+{
+  "info": {
+    "name": "Order Execution Engine",
+    "description": "Complete API flow: POST to create -> WS to stream.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "orderId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": ["{{baseUrl}}"],
+          "path": ["health"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "2. Execute Order (Create)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "var jsonData = pm.response.json();",
+              "if (jsonData.success && jsonData.orderId) {",
+              "    pm.collectionVariables.set(\"orderId\", jsonData.orderId);",
+              "    console.log(\"Order ID set to:\", jsonData.orderId);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"tokenIn\": \"SOL\",\n    \"tokenOut\": \"USDC\",\n    \"amountIn\": 5.5,\n    \"orderType\": \"market\",\n    \"slippage\": 0.5\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/orders/execute",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "orders", "execute"]
+        },
+        "description": "Creates an order and returns an ID. This ID is auto-saved to variables."
+      },
+      "response": []
+    },
+    {
+      "name": "3. Get Order Status",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/orders/{{orderId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "orders", "{{orderId}}"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "4. Get All Orders",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/orders?limit=10",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "orders"],
+          "query": [
+            {
+              "key": "limit",
+              "value": "10"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "5. Get Stats",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/stats",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "stats"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "6. WebSocket Connect (Manual)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "ws://localhost:3000/api/orders/execute?orderId={{orderId}}",
+          "protocol": "ws",
+          "host": ["localhost"],
+          "port": "3000",
+          "path": ["api", "orders", "execute"],
+          "query": [
+            {
+              "key": "orderId",
+              "value": "{{orderId}}"
+            }
+          ]
+        },
+        "description": "Paste this URL into a WebSocket client (like Postman's WebSocket tab). It uses the ID from Request #2."
+      },
+      "response": []
+    }
+  ]
+}
