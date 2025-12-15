@@ -1,108 +1,230 @@
-# 🚀 Order Execution Engine
+# Order Execution Engine
 
-A high-performance order execution engine for Solana DEX trading with real-time WebSocket updates, intelligent routing, and concurrent order processing.
-
-## 📋 Table of Contents
-
-- [Overview](#overview)
-- [Features](#features)
-- [Architecture](#architecture)
-- [Tech Stack](#tech-stack)
-- [Getting Started](#getting-started)
-- [API Documentation](#api-documentation)
-- [Design Decisions](#design-decisions)
-- [Testing](#testing)
-- [Deployment](#deployment)
+A high-performance order execution engine for **Solana DEX trading** with real-time WebSocket updates, intelligent routing, and concurrent order processing.
 
 ---
 
-## 🎯 Overview
+## Table of Contents
 
-This order execution engine processes **Market Orders** with intelligent DEX routing between Raydium and Meteora. It provides real-time status updates via WebSocket and handles concurrent order processing with exponential backoff retry logic.
-
-### Why Market Orders?
-
-Market orders were chosen for this implementation because they:
-- Execute immediately at current market price
-- Have straightforward execution logic
-- Demonstrate the complete order lifecycle clearly
-- Are the most commonly used order type in trading
-
-### Extension to Other Order Types
-
-The engine can be easily extended to support:
-- **Limit Orders**: Add price monitoring service that triggers execution when target price is reached
-- **Sniper Orders**: Add token launch detection service that monitors new token deployments/migrations
+* [Overview](#overview)
+* [Live Deployment](#live-deployment)
+* [Live Testing Guide](#live-testing-guide)
+* [Features](#features)
+* [Architecture](#architecture)
+* [Tech Stack](#tech-stack)
+* [Getting Started](#getting-started)
+* [API Documentation](#api-documentation)
+* [Design Decisions](#design-decisions)
+* [Performance Metrics](#performance-metrics)
+* [License](#license)
 
 ---
 
-## ✨ Features
+## Overview
 
-### Core Functionality
-- ✅ **Market Order Execution** - Immediate execution at best available price
-- ✅ **DEX Routing** - Intelligent routing between Raydium and Meteora
-- ✅ **Real-time Updates** - WebSocket streaming of order status
-- ✅ **Concurrent Processing** - Handle 10 orders simultaneously
-- ✅ **Rate Limiting** - Process 100 orders per minute
-- ✅ **Retry Logic** - Exponential backoff with up to 3 attempts
-- ✅ **Order History** - Complete audit trail in PostgreSQL
+This order execution engine processes **market orders** with intelligent DEX routing between **Raydium** and **Meteora**. It provides real-time execution status updates via **WebSocket** and supports concurrent order processing with **exponential backoff retry logic**.
 
-### Technical Features
-- 🔄 HTTP → WebSocket upgrade pattern
-- 📊 Queue-based processing with BullMQ
-- 🔍 Price comparison across multiple DEXs
-- 💾 Dual storage (PostgreSQL + Redis)
-- 🧪 Comprehensive test coverage (30+ tests)
-- 📈 Real-time statistics and monitoring
+### Rationale for Market Orders
+
+Market orders were selected for this implementation because they:
+
+* Execute immediately at prevailing market prices
+* Have straightforward execution semantics
+* Clearly demonstrate the complete order lifecycle
+* Represent the most commonly used order type in live trading systems
+
+### Extensibility to Other Order Types
+
+The system architecture is designed to support additional order types with minimal changes:
+
+* **Limit Orders** through a price monitoring service
+* **Sniper Orders** through a token launch detection service
 
 ---
 
-## 🏗️ Architecture
+## Live Deployment
+
+**Base URL**
 
 ```
-┌─────────────┐
-│   Client    │
-└──────┬──────┘
-       │ WebSocket
-       ▼
-┌─────────────────────────────────────┐
-│         Fastify Server              │
-│  ┌────────────────────────────┐    │
-│  │   Order Routes             │    │
-│  │  - POST /api/orders/execute│    │
-│  │  - GET  /api/orders        │    │
-│  │  - GET  /api/stats         │    │
-│  └─────────────┬──────────────┘    │
-└────────────────┼────────────────────┘
-                 │
-                 ▼
-       ┌─────────────────┐
-       │  Order Service  │
-       └────────┬────────┘
-                │
-    ┌───────────┼───────────┐
-    ▼           ▼           ▼
-┌────────┐ ┌────────┐ ┌──────────┐
-│ BullMQ │ │ Redis  │ │PostgreSQL│
-│ Queue  │ │ Cache  │ │ Storage  │
-└───┬────┘ └────────┘ └──────────┘
-    │
-    ▼
-┌─────────────────┐
-│  Order Worker   │
-│  (Processes     │
-│   10 orders     │
-│   concurrently) │
-└────────┬────────┘
-         │
-         ▼
-┌──────────────────┐      ┌──────────────────┐
-│  DEX Router      │─────▶│  Mock Raydium    │
-│  (Price Compare) │      └──────────────────┘
-│                  │
-│                  │─────▶┌──────────────────┐
-└──────────────────┘      │  Mock Meteora    │
-                          └──────────────────┘
+https://order-execution-engine-b99h.onrender.com
+```
+
+The application is deployed on **Render** using a microservices-style setup:
+
+1. **Web Service** – Node.js + Fastify API
+2. **Worker Service** – Background processor responsible for order execution
+3. **Redis** – Managed instance for BullMQ-based job queues
+4. **PostgreSQL** – Managed relational database for persistent storage
+
+---
+
+## Live Testing Guide
+
+The system can be validated end-to-end as a black box (API → Worker → Database) using standard command-line tools such as `curl` and `wscat` against the live deployment.
+
+### Infrastructure Health Check
+
+Validate connectivity across the API, Redis, and PostgreSQL layers.
+
+```bash
+curl https://order-execution-engine-b99h.onrender.com/health
+```
+
+**Sample Response**
+
+```json
+{
+  "status": "ok",
+  "timestamp": "2025-12-15T09:10:04.284Z",
+  "services": {
+    "database": "connected",
+    "redis": "connected",
+    "worker": "running"
+  }
+}
+```
+
+---
+
+### Create a Market Order
+
+Submit a trade request (example: **10 SOL → USDC**). Input validation is handled by **Zod**, and the order is queued in **Redis** for asynchronous processing.
+
+```bash
+curl -X POST https://order-execution-engine-b99h.onrender.com/api/orders/execute \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tokenIn": "SOL",
+    "tokenOut": "USDC",
+    "amountIn": 10,
+    "orderType": "market",
+    "slippage": 1.0
+  }'
+```
+
+**Sample Response**
+
+```json
+{
+  "success": true,
+  "orderId": "fab488a4-c1f3-47e2-a547-807c51a6f216",
+  "message": "Order queued",
+  "wsUrl": "/api/orders/execute?orderId=fab488a4-c1f3-47e2-a547-807c51a6f216"
+}
+```
+
+---
+
+### Real-Time Execution via WebSocket
+
+Connect to the WebSocket endpoint to observe the execution lifecycle and final outcome.
+
+```bash
+wscat -c "wss://order-execution-engine-b99h.onrender.com/api/orders/execute?orderId=fab488a4-c1f3-47e2-a547-807c51a6f216"
+```
+
+If the order has already completed, the server immediately returns the final confirmed state.
+
+**Sample Response**
+
+```json
+{
+  "type": "ORDER_UPDATE",
+  "status": "confirmed",
+  "data": {
+    "id": "fab488a4-c1f3-47e2-a547-807c51a6f216",
+    "status": "confirmed",
+    "selectedDex": "raydium",
+    "executedPrice": "101.64240900",
+    "amountOut": "1013.37481773",
+    "txHash": "dDvGaEJNFgw47gJAWJohgtcZ3aaNQVUN2opR1p9cmbGs1fFMsQ8puGBTRbZngbR5Kb53qJkjMpoNRJ2wWA1cUdXj"
+  }
+}
+```
+
+This confirms successful routing, price computation, and transaction finalization.
+
+---
+
+### Verify Data Persistence
+
+Retrieve the order record from **PostgreSQL** to confirm durable storage.
+
+```bash
+curl https://order-execution-engine-b99h.onrender.com/api/orders/fab488a4-c1f3-47e2-a547-807c51a6f216
+```
+
+**Sample Response**
+
+```json
+{
+  "success": true,
+  "order": {
+    "id": "fab488a4-c1f3-47e2-a547-807c51a6f216",
+    "status": "confirmed",
+    "tokenIn": "SOL",
+    "tokenOut": "USDC",
+    "amountIn": "10.00000000",
+    "executedPrice": "101.64240900",
+    "txHash": "dDvGaEJNFgw47gJAWJohgtcZ3aaNQVUN2opR1p9cmbGs1fFMsQ8puGBTRbZngbR5Kb53qJkjMpoNRJ2wWA1cUdXj",
+    "createdAt": "2025-12-15T09:10:18.852Z",
+    "executedAt": "2025-12-15T09:10:22.460Z"
+  }
+}
+```
+
+---
+
+## Features
+
+### Core Capabilities
+
+* Market order execution at best available price
+* Intelligent DEX routing between Raydium and Meteora
+* Real-time execution updates over WebSocket
+* Concurrent processing of multiple orders
+* Configurable rate limiting (default: 100 orders per minute)
+* Exponential backoff retry strategy with up to three attempts
+* Persistent order history with a full audit trail
+* Simulated wrapped SOL handling for native SOL swaps
+
+### Technical Highlights
+
+* Unified HTTP to WebSocket upgrade pattern
+* Queue-driven processing using BullMQ
+* Cross-DEX price comparison
+* Dual storage model with PostgreSQL and Redis
+* Comprehensive automated test coverage
+* Real-time operational statistics
+
+---
+
+## Architecture
+
+```
+Client
+  │
+  │ WebSocket
+  ▼
+Fastify Server
+  │
+  │ Order Routes
+  │  - POST /api/orders/execute
+  │  - GET  /api/orders
+  │  - GET  /api/stats
+  ▼
+Order Service
+  │
+  ├── Redis / BullMQ Queue
+  ├── PostgreSQL Storage
+  ▼
+Order Worker (10 concurrent executions)
+  │
+  ▼
+DEX Router
+  ├── Mock Raydium
+  └── Mock Meteora
 ```
 
 ### Order Lifecycle
@@ -116,94 +238,109 @@ PENDING → ROUTING → BUILDING → SUBMITTED → CONFIRMED
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 ### Backend
-- **Node.js** (v18+) - Runtime environment
-- **TypeScript** - Type safety and better DX
-- **Fastify** - Fast web framework with WebSocket support
 
-### Database & Queue
-- **PostgreSQL** - Persistent order storage
-- **Redis** - Cache and queue management
-- **BullMQ** - Job queue for order processing
-- **TypeORM** - Database ORM
+* **Node.js (v18+)** – Runtime environment
+* **TypeScript** – Static typing and improved developer experience
+* **Fastify** – High-performance web framework with WebSocket support
+
+### Database and Queue
+
+* **PostgreSQL** – Persistent relational storage
+* **Redis** – In-memory cache and queue backend
+* **BullMQ** – Distributed job queue
+* **TypeORM** – Object-relational mapping
 
 ### Testing
-- **Vitest** - Fast unit test framework
-- **Supertest** - HTTP integration testing
+
+* **Vitest** – Unit testing framework
+* **Supertest** – HTTP integration testing
 
 ### Validation
-- **Zod** - Runtime type validation
+
+* **Zod** – Runtime schema validation
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 
-- Node.js v18 or higher
-- PostgreSQL 12+
-- Redis 6.2+
-
-### Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd order-execution-engine
-   ```
-
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
-
-3. **Set up environment variables**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your configuration
-   ```
-
-4. **Create PostgreSQL database**
-   ```bash
-   psql -U postgres
-   CREATE DATABASE order_engine;
-   \q
-   ```
-
-5. **Run database migrations**
-   ```bash
-   npm run db:setup
-   ```
-
-6. **Start Redis**
-   ```bash
-   # Using Docker
-   docker run -d -p 6379:6379 redis:alpine
-   
-   # Or using Windows (Memurai)
-   # Download and install from https://www.memurai.com/
-   ```
-
-7. **Start the server**
-   ```bash
-   npm run dev
-   ```
-
-   Server will be running at `http://localhost:3000`
+* Node.js v18 or higher
+* PostgreSQL 12 or higher
+* Redis 6.2 or higher
 
 ---
 
-## 📡 API Documentation
+### Installation
 
-### Submit Order (HTTP)
+#### Clone the Repository
 
-**Endpoint:** `POST /api/orders/execute`
+```bash
+git clone https://github.com/therealparthiv/eterna-labs-order-execution-engine
+cd order-execution-engine
+```
 
-Validates input, creates the order in the database, and queues it for processing. Returns an `orderId` immediately.
+#### Install Dependencies
 
-**Request Body:**
+```bash
+npm install
+```
+
+#### Configure Environment Variables
+
+```bash
+cp .env.example .env
+```
+
+Edit the `.env` file with local credentials.
+
+#### Create the Database
+
+```bash
+createdb order_engine
+```
+
+#### Run Migrations
+
+```bash
+npm run db:setup
+```
+
+#### Start Redis
+
+Ensure Redis is running locally or via Docker.
+
+#### Start the Development Server
+
+```bash
+npm run dev
+```
+
+The server will be available at `http://localhost:3000`.
+
+---
+
+## Run Tests
+
+Execute the full test suite covering routing logic, validation, and helper utilities.
+
+```bash
+npm test
+```
+
+---
+
+## API Documentation
+
+### Submit Order
+
+**POST /api/orders/execute**
+
+Validates input, persists the order, and enqueues it for execution. Returns an `orderId` immediately.
+
 ```json
 {
   "tokenIn": "SOL",
@@ -214,267 +351,59 @@ Validates input, creates the order in the database, and queues it for processing
 }
 ```
 
-**Response :**
-```json
-{
-  "success": true,
-  "orderId": "550e8400-e29b-41d4-a716-446655440000",
-  "message": "Order queued. Connect to WebSocket for updates.",
-  "wsUrl": "/api/orders/execute?orderId=550e8400-e29b-41d4-a716-446655440000"
-}
-```
+### Retrieve Order by ID
 
-### Get Order by ID
+**GET /api/orders/:orderId**
 
-**Endpoint:** `GET /api/orders/:orderId`
+### Retrieve Orders
 
-```bash
-curl http://localhost:3000/api/orders/abc-123-def
-```
+**GET /api/orders?limit=50&offset=0**
 
-**Response:**
-```json
-{
-  "success": true,
-  "order": {
-    "id": "abc-123-def",
-    "orderType": "market",
-    "status": "confirmed",
-    "tokenIn": "SOL",
-    "tokenOut": "USDC",
-    "amountIn": 10,
-    "executedPrice": 100.5,
-    "txHash": "...",
-    "createdAt": "2024-11-20T12:00:00Z"
-  }
-}
-```
+### Retrieve Statistics
 
-### Get All Orders
-
-**Endpoint:** `GET /api/orders?limit=50&offset=0`
-
-```bash
-curl http://localhost:3000/api/orders?limit=10
-```
-
-### Get Statistics
-
-**Endpoint:** `GET /api/stats`
-
-```bash
-curl http://localhost:3000/api/stats
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "orders": {
-    "total": 150,
-    "pending": 5,
-    "confirmed": 140,
-    "failed": 5
-  },
-  "queue": {
-    "waiting": 2,
-    "active": 8,
-    "completed": 140,
-    "failed": 5
-  },
-  "websockets": {
-    "activeConnections": 3
-  }
-}
-```
+**GET /api/stats**
 
 ---
 
-## 🧠 Design Decisions
+## Design Decisions
 
-### 1. Mock Implementation vs Real Devnet
+### Mock Execution Instead of Devnet Integration
 
-**Decision:** Mock implementation with realistic delays
+A mock implementation with realistic latency and variance was chosen to emphasize system architecture, execution flow, and error handling without reliance on external blockchain dependencies.
 
-**Reasoning:**
-- Focus on architecture and flow
-- No dependency on external blockchain networks
-- Faster development and testing
-- Easier to demonstrate and debug
-- Can be easily replaced with real SDK calls
+### Unified HTTP and WebSocket Endpoint
 
-### 2. HTTP → WebSocket Upgrade Pattern
+A single endpoint is used for both HTTP submission and WebSocket streaming, resulting in a cleaner and more intuitive API surface.
 
-**Decision:** Single endpoint handles both protocols
+### Queue-Based Execution Model
 
-**Reasoning:**
-- Cleaner API design (one endpoint per action)
-- Natural connection lifecycle management
-- Reduces connection overhead
-- Better suited for real-time updates
+BullMQ backed by Redis enables controlled concurrency, high throughput, rate limiting, and automatic retries.
 
-### 3. Queue-Based Processing
+### Dual Storage Strategy
 
-**Decision:** BullMQ with Redis for job queue
-
-**Reasoning:**
-- Handle high throughput (100 orders/minute)
-- Natural concurrency control (10 simultaneous)
-- Built-in retry mechanism
-- Job persistence and recovery
-- Monitoring and observability
-
-### 4. Dual Storage Strategy
-
-**Decision:** PostgreSQL for persistence + Redis for active data
-
-**Reasoning:**
-- PostgreSQL: Complete audit trail, complex queries
-- Redis: Fast access for active orders, queue state
-- Separation of concerns
-- Optimal performance for each use case
-
-### 5. Price Comparison Logic
-
-**Decision:** Parallel DEX queries with best output selection
-
-**Reasoning:**
-- Minimize latency (parallel vs sequential)
-- Fair comparison across DEXs
-- Consider both price and fees
-- Maximize output for user
+* PostgreSQL provides a durable, queryable audit log
+* Redis supports fast in-memory state and job management
 
 ---
 
-## 🧪 Testing
+## Performance Metrics
 
-### Run All Tests
+* Throughput: 100+ orders per minute
+* Concurrency: 10 simultaneous executions
+* Latency:
 
-```bash
-npm test
-```
-
-### Run Tests with Coverage
-
-```bash
-npm run test -- --coverage
-```
-
-### Test Structure
-
-```
-tests/
-├── dex-router.test.ts      # DEX routing logic (14 tests)
-├── order-service.test.ts   # Order validation (9 tests)
-└── helpers.test.ts         # Utility functions (18 tests)
-```
-
-### Test Coverage
-
-- ✅ DEX quote fetching
-- ✅ Price comparison logic
-- ✅ Best route selection
-- ✅ Transaction execution simulation
-- ✅ Order creation and validation
-- ✅ Utility function correctness
-- ✅ **Total: 41 tests**
+    * Simulated execution time: approximately 3–5 seconds
+    * WebSocket updates: under 100 milliseconds
+* Reliability: Designed for greater than 99% success rate with retries
 
 ---
 
-## 📦 Deployment
-
-### Deployment URL
-
-🔗 **Live Demo:** [Coming Soon]
-
-### Deployment Instructions
-
-#### Option 1: Railway
-
-```bash
-# Install Railway CLI
-npm install -g @railway/cli
-
-# Login
-railway login
-
-# Deploy
-railway up
-```
-
-#### Option 2: Render
-
-1. Connect GitHub repository
-2. Add PostgreSQL and Redis services
-3. Set environment variables
-4. Deploy
-
-#### Option 3: Docker
-
-```bash
-docker build -t order-engine .
-docker run -p 3000:3000 order-engine
-```
-
-### Environment Variables for Production
-
-```env
-NODE_ENV=production
-PORT=3000
-DB_HOST=your-db-host
-DB_PORT=5432
-DB_NAME=order_engine
-DB_USER=your-db-user
-DB_PASSWORD=your-db-password
-REDIS_HOST=your-redis-host
-REDIS_PORT=6379
-MAX_CONCURRENT_ORDERS=10
-ORDERS_PER_MINUTE=100
-MAX_RETRIES=3
-```
-
----
-
-
-
-## 📊 Performance Metrics
-
-- **Throughput:** 100 orders/minute
-- **Concurrency:** 10 simultaneous orders
-- **Order Processing:** ~3-5 seconds per order
-- **WebSocket Latency:** <100ms for status updates
-- **Success Rate:** 99%+ (with retries)
-
----
-
-## 🔮 Future Enhancements
-
-1. **Limit Orders** - Add price monitoring service
-2. **Sniper Orders** - Add token launch detection
-3. **Real Devnet Integration** - Replace mocks with actual Raydium/Meteora SDKs
-4. **Advanced Routing** - Multi-hop routing for better prices
-5. **Portfolio Management** - Track user holdings and P&L
-6. **Stop-Loss Orders** - Automatic exit on price drops
-7. **API Rate Limiting** - Per-user rate limits
-8. **WebSocket Authentication** - Secure connections
-
----
-
-## 📄 License
+## License
 
 MIT
 
 ---
 
-## 👨‍💻 Author
+## Author
 
-Built with ❤️ for a backend engineering assignment
-
----
-
-## 🙏 Acknowledgments
-
-- Solana for the blockchain platform
-- Raydium & Meteora for DEX inspiration
-- Fastify team for excellent WebSocket support
-- BullMQ team for reliable queue management
+**Parthiv V Nair**

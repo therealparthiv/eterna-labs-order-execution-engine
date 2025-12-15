@@ -117,162 +117,175 @@
 </head>
 
 <body>
-    <div class="container">
-        <h1>Order Execution Test Client</h1>
+<div class="container">
+    <h1>Order Execution Test Client</h1>
 
-        <div class="form-group">
-            <label>Token In:</label>
-            <input type="text" id="tokenIn" value="SOL" placeholder="e.g., SOL">
-        </div>
-
-        <div class="form-group">
-            <label>Token Out:</label>
-            <input type="text" id="tokenOut" value="USDC" placeholder="e.g., USDC">
-        </div>
-
-        <div class="form-group">
-            <label>Amount In:</label>
-            <input type="number" id="amountIn" value="10" step="0.01" placeholder="e.g., 10">
-        </div>
-
-        <div class="form-group">
-            <label>Order Type:</label>
-            <select id="orderType">
-                <option value="market">Market Order</option>
-                <option value="limit">Limit Order</option>
-                <option value="sniper">Sniper Order</option>
-            </select>
-        </div>
-
-        <div class="form-group">
-            <label>Slippage (%):</label>
-            <input type="number" id="slippage" value="1.0" step="0.1" placeholder="e.g., 1.0">
-        </div>
-
-        <button onclick="submitOrder()" id="submitBtn">Submit Order</button>
-        <button onclick="submitMultiple()" id="multiBtn">Submit 5 Orders</button>
-        <button onclick="clearLog()">Clear Log</button>
-
-        <div class="status-log" id="statusLog">
-            <div>Waiting for orders...</div>
-        </div>
+    <div style="margin-bottom: 20px; padding: 10px; background: #e8f5e9; border-radius: 5px;">
+        <label style="display:inline-block; margin-right: 10px;">Target Server:</label>
+        <select id="serverUrl" style="width: auto; display:inline-block;">
+            <option value="wss://order-execution-engine-b99h.onrender.com/api/orders/execute">🚀 Live (Render)</option>
+            <option value="ws://localhost:3000/api/orders/execute">💻 Localhost</option>
+        </select>
     </div>
 
-    <script>
-        function log(message, className = '') {
-            const logDiv = document.getElementById('statusLog');
-            const entry = document.createElement('div');
-            entry.className = 'status-entry ' + className;
-            entry.innerHTML = `
-        <div class="timestamp">${new Date().toLocaleTimeString()}</div>
-        <div>${message}</div>
-      `;
-            logDiv.appendChild(entry);
-            logDiv.scrollTop = logDiv.scrollHeight;
+    <div class="form-group">
+        <label>Token In:</label>
+        <input type="text" id="tokenIn" value="SOL" placeholder="e.g., SOL">
+    </div>
+
+    <div class="form-group">
+        <label>Token Out:</label>
+        <input type="text" id="tokenOut" value="USDC" placeholder="e.g., USDC">
+    </div>
+
+    <div class="form-group">
+        <label>Amount In:</label>
+        <input type="number" id="amountIn" value="10" step="0.01" placeholder="e.g., 10">
+    </div>
+
+    <div class="form-group">
+        <label>Order Type:</label>
+        <select id="orderType">
+            <option value="market">Market Order</option>
+            <option value="limit">Limit Order</option>
+            <option value="sniper">Sniper Order</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label>Slippage (%):</label>
+        <input type="number" id="slippage" value="1.0" step="0.1" placeholder="e.g., 1.0">
+    </div>
+
+    <button onclick="submitOrder()" id="submitBtn">Submit Order</button>
+    <button onclick="submitMultiple()" id="multiBtn">Submit 5 Orders</button>
+    <button onclick="clearLog()">Clear Log</button>
+
+    <div class="status-log" id="statusLog">
+        <div>Waiting for orders...</div>
+    </div>
+</div>
+
+<script>
+    function log(message, className = '') {
+        const logDiv = document.getElementById('statusLog');
+        const entry = document.createElement('div');
+        entry.className = 'status-entry ' + className;
+        entry.innerHTML = `
+    <div class="timestamp">${new Date().toLocaleTimeString()}</div>
+    <div>${message}</div>
+  `;
+        logDiv.appendChild(entry);
+        logDiv.scrollTop = logDiv.scrollHeight;
+    }
+
+    function clearLog() {
+        document.getElementById('statusLog').innerHTML = '<div>Log cleared. Waiting for orders...</div>';
+    }
+
+    async function submitOrder() {
+        const tokenIn = document.getElementById('tokenIn').value;
+        const tokenOut = document.getElementById('tokenOut').value;
+        const amountIn = parseFloat(document.getElementById('amountIn').value);
+        const orderType = document.getElementById('orderType').value;
+        const slippage = parseFloat(document.getElementById('slippage').value);
+
+        // Get selected server URL
+        const wsUrl = document.getElementById('serverUrl').value;
+
+        if (!tokenIn || !tokenOut || !amountIn) {
+            alert('Please fill in all fields');
+            return;
         }
 
-        function clearLog() {
-            document.getElementById('statusLog').innerHTML = '<div>Log cleared. Waiting for orders...</div>';
-        }
+        const orderData = {
+            tokenIn,
+            tokenOut,
+            amountIn,
+            orderType,
+            slippage
+        };
 
-        async function submitOrder() {
-            const tokenIn = document.getElementById('tokenIn').value;
-            const tokenOut = document.getElementById('tokenOut').value;
-            const amountIn = parseFloat(document.getElementById('amountIn').value);
-            const orderType = document.getElementById('orderType').value;
-            const slippage = parseFloat(document.getElementById('slippage').value);
+        log(`Submitting order to ${wsUrl.includes('localhost') ? 'Localhost' : 'Live Server'}...`, 'status-pending');
+        log(`${amountIn} ${tokenIn} → ${tokenOut}`, 'status-pending');
 
-            if (!tokenIn || !tokenOut || !amountIn) {
-                alert('Please fill in all fields');
-                return;
-            }
+        try {
+            // Create WebSocket connection to the selected server
+            const ws = new WebSocket(wsUrl);
 
-            const orderData = {
-                tokenIn,
-                tokenOut,
-                amountIn,
-                orderType,
-                slippage
+            ws.onopen = () => {
+                log('WebSocket connected', 'status-pending');
+                // Send order data
+                ws.send(JSON.stringify(orderData));
             };
 
-            log(`Submitting order: ${amountIn} ${tokenIn} → ${tokenOut}`, 'status-pending');
+            ws.onmessage = (event) => {
+                const update = JSON.parse(event.data);
 
-            try {
-                // Create WebSocket connection
-                const ws = new WebSocket('ws://localhost:3000/api/orders/execute');
+                if (update.error) {
+                    log(`Error: ${update.error}`, 'status-failed');
+                    return;
+                }
 
-                ws.onopen = () => {
-                    log('WebSocket connected', 'status-pending');
-                    // Send order data
-                    ws.send(JSON.stringify(orderData));
-                };
+                let statusEmoji = '⏳';
+                let statusClass = 'status-' + update.status;
 
-                ws.onmessage = (event) => {
-                    const update = JSON.parse(event.data);
+                switch (update.status) {
+                    case 'pending': statusEmoji = '⏳'; break;
+                    case 'routing': statusEmoji = '🔍'; break;
+                    case 'building': statusEmoji = '🔨'; break;
+                    case 'submitted': statusEmoji = '📡'; break;
+                    case 'confirmed': statusEmoji = '✅'; break;
+                    case 'failed': statusEmoji = '❌'; break;
+                }
 
-                    if (update.error) {
-                        log(`Error: ${update.error}`, 'status-failed');
-                        return;
-                    }
+                let message = `${statusEmoji} Order ${update.orderId.substring(0, 8)}... - ${update.status.toUpperCase()}`;
 
-                    let statusEmoji = '⏳';
-                    let statusClass = 'status-' + update.status;
+                if (update.message) {
+                    message += `<br>&nbsp;&nbsp;&nbsp;${update.message}`;
+                }
 
-                    switch (update.status) {
-                        case 'pending': statusEmoji = '⏳'; break;
-                        case 'routing': statusEmoji = '🔍'; break;
-                        case 'building': statusEmoji = '🔨'; break;
-                        case 'submitted': statusEmoji = '📡'; break;
-                        case 'confirmed': statusEmoji = '✅'; break;
-                        case 'failed': statusEmoji = '❌'; break;
-                    }
+                if (update.selectedDex) {
+                    message += `<br>&nbsp;&nbsp;&nbsp;DEX: ${update.selectedDex.toUpperCase()}`;
+                }
 
-                    let message = `${statusEmoji} Order ${update.orderId.substring(0, 8)}... - ${update.status.toUpperCase()}`;
+                if (update.txHash) {
+                    message += `<br>&nbsp;&nbsp;&nbsp;TxHash: ${update.txHash.substring(0, 20)}...`;
+                }
 
-                    if (update.message) {
-                        message += `<br>&nbsp;&nbsp;&nbsp;${update.message}`;
-                    }
+                if (update.executedPrice) {
+                    message += `<br>&nbsp;&nbsp;&nbsp;Price: ${update.executedPrice}`;
+                }
 
-                    if (update.selectedDex) {
-                        message += `<br>&nbsp;&nbsp;&nbsp;DEX: ${update.selectedDex.toUpperCase()}`;
-                    }
+                log(message, statusClass);
 
-                    if (update.txHash) {
-                        message += `<br>&nbsp;&nbsp;&nbsp;TxHash: ${update.txHash.substring(0, 20)}...`;
-                    }
+                // Close connection after confirmed or failed
+                if (update.status === 'confirmed' || update.status === 'failed') {
+                    setTimeout(() => ws.close(), 1000);
+                }
+            };
 
-                    if (update.executedPrice) {
-                        message += `<br>&nbsp;&nbsp;&nbsp;Price: ${update.executedPrice}`;
-                    }
+            ws.onerror = (error) => {
+                log(`WebSocket error: Connection failed. Check console.`, 'status-failed');
+                console.error('WebSocket Error:', error);
+            };
 
-                    log(message, statusClass);
+            ws.onclose = () => {
+                log('WebSocket disconnected', 'status-pending');
+            };
 
-                    // Close connection after confirmed or failed
-                    if (update.status === 'confirmed' || update.status === 'failed') {
-                        setTimeout(() => ws.close(), 1000);
-                    }
-                };
-
-                ws.onerror = (error) => {
-                    log(`WebSocket error: ${error}`, 'status-failed');
-                };
-
-                ws.onclose = () => {
-                    log('WebSocket disconnected', 'status-pending');
-                };
-
-            } catch (error) {
-                log(`Error: ${error.message}`, 'status-failed');
-            }
+        } catch (error) {
+            log(`Error: ${error.message}`, 'status-failed');
         }
+    }
 
-        async function submitMultiple() {
-            log('Submitting 5 orders simultaneously...', 'status-pending');
-            for (let i = 0; i < 5; i++) {
-                setTimeout(() => submitOrder(), i * 100);
-            }
+    async function submitMultiple() {
+        log('Submitting 5 orders simultaneously...', 'status-pending');
+        for (let i = 0; i < 5; i++) {
+            setTimeout(() => submitOrder(), i * 100);
         }
-    </script>
+    }
+</script>
 </body>
 
 </html>
