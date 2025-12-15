@@ -132,6 +132,12 @@ export class MockDexRouter {
     console.log(`   Expected price: ${expectedPrice}`);
     console.log(`   Slippage tolerance: ${slippage}%`);
 
+    // HANDLING WRAPPED SOL (New addition)
+    if (tokenIn === 'SOL') {
+      console.log(`   ℹ️  Wrapping SOL to wSOL before swap...`);
+      await sleep(500); // Simulate wrapping time
+    }
+
     // Simulate transaction building and execution (2-3 seconds)
     const executionTime = 2000 + Math.random() * 1000;
     await sleep(executionTime);
