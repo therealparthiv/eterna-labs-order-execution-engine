@@ -34,7 +34,7 @@ export class WebSocketManager {
     });
 
     // Handle socket errors
-    socket.on('error', (error) => {
+    socket.on('error', (error: any) => {
       console.error(`WebSocket error for order ${orderId}:`, error);
       this.connections.delete(orderId);
     });
