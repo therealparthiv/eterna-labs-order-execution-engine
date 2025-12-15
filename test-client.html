@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Order Execution Test Client</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+
+        input,
+        select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        button {
+            background: #4CAF50;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+
+        button:hover {
+            background: #45a049;
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .status-log {
+            margin-top: 30px;
+            background: #1e1e1e;
+            color: #00ff00;
+            padding: 20px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            height: 400px;
+            overflow-y: auto;
+        }
+
+        .status-entry {
+            margin-bottom: 10px;
+            padding: 10px;
+            border-left: 3px solid #4CAF50;
+            background: rgba(76, 175, 80, 0.1);
+        }
+
+        .status-pending {
+            border-left-color: #ff9800;
+        }
+
+        .status-routing {
+            border-left-color: #2196F3;
+        }
+
+        .status-building {
+            border-left-color: #9C27B0;
+        }
+
+        .status-submitted {
+            border-left-color: #FFC107;
+        }
+
+        .status-confirmed {
+            border-left-color: #4CAF50;
+        }
+
+        .status-failed {
+            border-left-color: #f44336;
+        }
+
+        .timestamp {
+            color: #888;
+            font-size: 12px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Order Execution Test Client</h1>
+
+        <div class="form-group">
+            <label>Token In:</label>
+            <input type="text" id="tokenIn" value="SOL" placeholder="e.g., SOL">
+        </div>
+
+        <div class="form-group">
+            <label>Token Out:</label>
+            <input type="text" id="tokenOut" value="USDC" placeholder="e.g., USDC">
+        </div>
+
+        <div class="form-group">
+            <label>Amount In:</label>
+            <input type="number" id="amountIn" value="10" step="0.01" placeholder="e.g., 10">
+        </div>
+
+        <div class="form-group">
+            <label>Order Type:</label>
+            <select id="orderType">
+                <option value="market">Market Order</option>
+                <option value="limit">Limit Order</option>
+                <option value="sniper">Sniper Order</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Slippage (%):</label>
+            <input type="number" id="slippage" value="1.0" step="0.1" placeholder="e.g., 1.0">
+        </div>
+
+        <button onclick="submitOrder()" id="submitBtn">Submit Order</button>
+        <button onclick="submitMultiple()" id="multiBtn">Submit 5 Orders</button>
+        <button onclick="clearLog()">Clear Log</button>
+
+        <div class="status-log" id="statusLog">
+            <div>Waiting for orders...</div>
+        </div>
+    </div>
+
+    <script>
+        function log(message, className = '') {
+            const logDiv = document.getElementById('statusLog');
+            const entry = document.createElement('div');
+            entry.className = 'status-entry ' + className;
+            entry.innerHTML = `
+        <div class="timestamp">${new Date().toLocaleTimeString()}</div>
+        <div>${message}</div>
+      `;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('statusLog').innerHTML = '<div>Log cleared. Waiting for orders...</div>';
+        }
+
+        async function submitOrder() {
+            const tokenIn = document.getElementById('tokenIn').value;
+            const tokenOut = document.getElementById('tokenOut').value;
+            const amountIn = parseFloat(document.getElementById('amountIn').value);
+            const orderType = document.getElementById('orderType').value;
+            const slippage = parseFloat(document.getElementById('slippage').value);
+
+            if (!tokenIn || !tokenOut || !amountIn) {
+                alert('Please fill in all fields');
+                return;
+            }
+
+            const orderData = {
+                tokenIn,
+                tokenOut,
+                amountIn,
+                orderType,
+                slippage
+            };
+
+            log(`Submitting order: ${amountIn} ${tokenIn} → ${tokenOut}`, 'status-pending');
+
+            try {
+                // Create WebSocket connection
+                const ws = new WebSocket('ws://localhost:3000/api/orders/execute');
+
+                ws.onopen = () => {
+                    log('WebSocket connected', 'status-pending');
+                    // Send order data
+                    ws.send(JSON.stringify(orderData));
+                };
+
+                ws.onmessage = (event) => {
+                    const update = JSON.parse(event.data);
+
+                    if (update.error) {
+                        log(`Error: ${update.error}`, 'status-failed');
+                        return;
+                    }
+
+                    let statusEmoji = '⏳';
+                    let statusClass = 'status-' + update.status;
+
+                    switch (update.status) {
+                        case 'pending': statusEmoji = '⏳'; break;
+                        case 'routing': statusEmoji = '🔍'; break;
+                        case 'building': statusEmoji = '🔨'; break;
+                        case 'submitted': statusEmoji = '📡'; break;
+                        case 'confirmed': statusEmoji = '✅'; break;
+                        case 'failed': statusEmoji = '❌'; break;
+                    }
+
+                    let message = `${statusEmoji} Order ${update.orderId.substring(0, 8)}... - ${update.status.toUpperCase()}`;
+
+                    if (update.message) {
+                        message += `<br>&nbsp;&nbsp;&nbsp;${update.message}`;
+                    }
+
+                    if (update.selectedDex) {
+                        message += `<br>&nbsp;&nbsp;&nbsp;DEX: ${update.selectedDex.toUpperCase()}`;
+                    }
+
+                    if (update.txHash) {
+                        message += `<br>&nbsp;&nbsp;&nbsp;TxHash: ${update.txHash.substring(0, 20)}...`;
+                    }
+
+                    if (update.executedPrice) {
+                        message += `<br>&nbsp;&nbsp;&nbsp;Price: ${update.executedPrice}`;
+                    }
+
+                    log(message, statusClass);
+
+                    // Close connection after confirmed or failed
+                    if (update.status === 'confirmed' || update.status === 'failed') {
+                        setTimeout(() => ws.close(), 1000);
+                    }
+                };
+
+                ws.onerror = (error) => {
+                    log(`WebSocket error: ${error}`, 'status-failed');
+                };
+
+                ws.onclose = () => {
+                    log('WebSocket disconnected', 'status-pending');
+                };
+
+            } catch (error) {
+                log(`Error: ${error.message}`, 'status-failed');
+            }
+        }
+
+        async function submitMultiple() {
+            log('Submitting 5 orders simultaneously...', 'status-pending');
+            for (let i = 0; i < 5; i++) {
+                setTimeout(() => submitOrder(), i * 100);
+            }
+        }
+    </script>
+</body>
+
+</html>
